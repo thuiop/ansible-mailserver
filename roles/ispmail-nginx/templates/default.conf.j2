@@ -1,0 +1,38 @@
+{# Construct the reverse proxy list : ["server1", "server2"] #}
+{% set reverse_proxies = groups['rp'] | difference([ansible_hostname]) %}
+{# Construct the locations list : ["@server1", "@server2"] #}
+{% set reverse_proxy_locations = reverse_proxies | map("regex_replace", "^(.*)$", "@\1") %}
+
+server {
+    listen       80;
+    server_name  {{ domain_name }} default;
+
+    #access_log  /var/log/nginx/host.access.log  main;
+
+    location /noloop {
+        alias   /var/www/html;
+    }
+
+    location / {
+        root   /var/www/html;
+        index  index.html index.htm;
+        {% if reverse_proxies | length > 0 -%}
+        try_files $uri {{ reverse_proxy_locations|join(' ') }};
+        {% endif -%}
+    }
+
+{% for reverse_proxy in reverse_proxies %}
+    {%- set reverse_proxy_vars = hostvars[reverse_proxy] %}
+    location @{{ reverse_proxy }} {
+        rewrite /(.*) /noloop/$1  break;
+        proxy_pass         http://{{ reverse_proxy_vars["domain_name"] }};
+        proxy_redirect     off;
+        proxy_set_header   Host $host;
+    }
+{% endfor %}
+    error_page   500 502 503 504  /50x.html;
+    location = /50x.html {
+        root   /usr/share/nginx/html;
+    }
+
+}

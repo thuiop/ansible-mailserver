@@ -1,4 +1,13 @@
 ---
+- name: Deploy reverse proxy
+  hosts: rp
+  # rp = mta + mda + antispam
+  roles:
+    - ispmail-nginx
+  tags:
+    - rp
+    - nginx
+
 - name: Deploy database
   hosts: db
   roles:
