@@ -1,0 +1,49 @@
+---
+- name: Create TLS directories
+  file:
+    state: directory
+    path: "{{ item }}"
+    owner: root
+    group: root
+    mode: 0770
+  loop:
+    - "{{ node_ca_key | dirname }}"
+    - "{{ node_ca_cert | dirname }}"
+
+# TODO(shaka): translate ton openssl module
+- name: Generate node's CA keypair
+  command: "openssl req -x509 -nodes -newkey rsa:4096 \
+                    -keyout {{ node_ca_key }} \
+                    -out {{ node_ca_cert }} -days 1826 \
+                    -subj '/CN=CA.{{ domain_name }}'"
+  args:
+    creates: "{{ node_ca_key }}"
+
+# TODO(shaka) check if still needed
+- name: Ensure root owns the tls material
+  file:
+    state: file
+    path: "{{ item }}"
+    owner: root
+    group: root
+    mode: 0600
+  loop:
+    - "{{ node_ca_key }}"
+    - "{{ node_ca_cert }}"
+
+- name: Recover certificate
+  slurp:
+    src: "{{ node_ca_cert }}"
+  register: certificate
+
+- name: Trust CA on every server
+  copy:
+    content: "{{ certificate['content'] | b64decode }}"
+    dest: "/usr/local/share/ca-certificates/{{ domain_name }}.crt"
+    owner: root
+    group: root
+  delegate_to: "{{ item }}"
+  with_inventory_hostnames:
+    - mail
+  become: true
+  notify: update ca-certificates
